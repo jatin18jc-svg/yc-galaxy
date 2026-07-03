@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YC Galaxy — every YC company, 2022 to 2026</title>
+<meta name="description" content="An interactive galaxy of 2,760 Y Combinator companies from 2022 to 2026 — clustered by sector and archetype, colored by AI category, replayable batch by batch.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2230%22 fill=%22%23a78bfa%22/><circle cx=%2278%22 cy=%2230%22 r=%2210%22 fill=%22%232dd4bf%22/></svg>">
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div id="brand">
+    <span id="brand-title">YC Galaxy</span>
+    <span id="brand-sub"></span>
+  </div>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search companies…" autocomplete="off" spellcheck="false">
+    <div id="search-results" hidden></div>
+  </div>
+  <div id="mode-toggle">
+    <button data-mode="2d" class="on">2D</button>
+    <button data-mode="3d">3D</button>
+  </div>
+  <button id="reset-view" title="Reset view">Reset view</button>
+</header>
+
+<aside id="rail">
+  <div id="visible-count"></div>
+  <div id="filters"></div>
+  <div id="legend">
+    <div class="f-title">Legend</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#a78bfa"></span>AI-native</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#2dd4bf"></span>AI-enabled</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#8a93a6"></span>Non-AI</div>
+    <div class="lg-row"><span class="lg-dot lg-ring"></span>Acquired</div>
+    <div class="lg-row"><span class="lg-dot lg-dim"></span>Inactive</div>
+  </div>
+</aside>
+
+<main id="stage">
+  <canvas id="galaxy"></canvas>
+  <canvas id="galaxy3d" style="display:none"></canvas>
+  <div id="labels3d" style="display:none"></div>
+  <div id="tooltip" hidden></div>
+  <div id="hint">drag to explore · scroll to zoom · click a cluster name to browse it</div>
+
+  <div id="timeline">
+    <button id="play" title="Play the batches">
+      <svg id="play-icon" width="14" height="14" viewBox="0 0 14 14"><path d="M3 1.5 L12 7 L3 12.5 Z" fill="currentColor"/></svg>
+      <svg id="pause-icon" width="14" height="14" viewBox="0 0 14 14" hidden><path d="M3 1.5 h3 v11 h-3 Z M8.5 1.5 h3 v11 h-3 Z" fill="currentColor"/></svg>
+    </button>
+    <input id="scrubber" type="range" min="0" value="0" step="1">
+    <div id="timeline-label"></div>
+  </div>
+</main>
+
+<aside id="panel" hidden>
+  <button id="panel-close" title="Close">&times;</button>
+  <div id="panel-body"></div>
+</aside>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

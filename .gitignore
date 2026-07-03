@@ -1,0 +1,5 @@
+# Source spreadsheets stay local — they carry extra columns (funding, valuation,
+# revenue) that aren't part of the published dataset.
+*.xlsx
+
+.DS_Store
