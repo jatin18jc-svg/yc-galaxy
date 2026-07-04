@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const GA = Math.PI * (3 - Math.sqrt(5));
-const GOLD = new THREE.Color('#fbbf24');
 
 function fibDir(i, n) {
   const y = 1 - 2 * (i + 0.5) / n;
@@ -63,6 +62,26 @@ function makeRingTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+function makeNebulaTexture(rgb) {
+  const S = 256, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.globalCompositeOperation = 'lighter';
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 7; i++) {
+    const x = S * (0.3 + rnd() * 0.4), y = S * (0.3 + rnd() * 0.4);
+    const r = S * (0.16 + rnd() * 0.2);
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(${rgb},${0.04 + rnd() * 0.04})`);
+    grad.addColorStop(0.6, `rgba(${rgb},${0.015 + rnd() * 0.015})`);
+    grad.addColorStop(1, `rgba(${rgb},0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, S, S);
+  }
+  return new THREE.CanvasTexture(c);
+}
+
 const VERT = `
 attribute float aSize;
 attribute float aAlpha;
@@ -96,50 +115,56 @@ export function init(app) {
   const canvas = document.getElementById('galaxy3d');
   const labelWrap = document.getElementById('labels3d');
   const companies = app.companies();
-  const groups = app.groups();
+  const reduced = !!app.reducedMotion;
+  let groups = app.groups();
+  let worldR = 0, HOME_DIST = 0;
 
-  /* ----- 3D layout ----- */
-  for (const g of groups) {
-    const sn = g.subs.map((s, j) => ({
-      s, r: 4.8 * Math.cbrt(s.list.length) + 3.5,
-      p: fibDir(j, g.subs.length).multiplyScalar(10),
-    }));
-    sn.forEach(nd => nd.p.multiplyScalar(nd.r));
-    relax3(sn, 2.5, 140, 0.012);
-    let gr = 0;
-    for (const nd of sn) gr = Math.max(gr, nd.p.length() + nd.r);
-    g.r3 = gr + 5;
-    g.subs3 = sn;
-  }
-  const gn = groups.map((g, i) => ({ g, r: g.r3, p: fibDir(i, groups.length).multiplyScalar(g.r3 + 60) }));
-  relax3(gn, 12, 260, 0.008);
-  let worldR = 0;
-  for (const nd of gn) {
-    nd.g.c3 = nd.p;
-    worldR = Math.max(worldR, nd.p.length() + nd.r);
-    for (const sub of nd.g.subs3) {
-      const center = new THREE.Vector3().addVectors(nd.p, sub.p);
-      sub.c3 = center;
-      const list = sub.s.list;
-      for (let i = 0; i < list.length; i++) {
-        const rr = Math.max(0, sub.r - 2.5) * Math.cbrt((i + 0.5) / list.length);
-        const d = fibDir(i, list.length).multiplyScalar(rr);
-        list[i].p3 = new THREE.Vector3(center.x + d.x, center.y + d.y, center.z + d.z);
+  /* ----- 3D layout (re-runnable) ----- */
+  function computeLayout() {
+    for (const g of groups) {
+      const sn = g.subs.map((s, j) => ({
+        s, r: 4.8 * Math.cbrt(s.list.length) + 3.5,
+        p: fibDir(j, g.subs.length).multiplyScalar(10),
+      }));
+      sn.forEach(nd => nd.p.multiplyScalar(nd.r));
+      relax3(sn, 2.5, 140, 0.012);
+      let gr = 0;
+      for (const nd of sn) gr = Math.max(gr, nd.p.length() + nd.r);
+      g.r3 = gr + 5;
+      g.subs3 = sn;
+    }
+    const gn = groups.map((g, i) => ({ g, r: g.r3, p: fibDir(i, groups.length).multiplyScalar(g.r3 + 60) }));
+    relax3(gn, 12, 260, 0.008);
+    let R = 0;
+    for (const nd of gn) {
+      nd.g.c3 = nd.p;
+      R = Math.max(R, nd.p.length() + nd.r);
+      for (const sub of nd.g.subs3) {
+        const center = new THREE.Vector3().addVectors(nd.p, sub.p);
+        sub.c3 = center;
+        const list = sub.s.list;
+        for (let i = 0; i < list.length; i++) {
+          const rr = Math.max(0, sub.r - 2.5) * Math.cbrt((i + 0.5) / list.length);
+          const d = fibDir(i, list.length).multiplyScalar(rr);
+          list[i].p3 = new THREE.Vector3(center.x + d.x, center.y + d.y, center.z + d.z);
+        }
       }
     }
+    worldR = R;
+    HOME_DIST = R * 2.35;
   }
-  const HOME_DIST = worldR * 2.35;
+  computeLayout();
 
   /* ----- renderer, scene, camera ----- */
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.5, worldR * 30);
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.5, worldR * 40);
   camera.position.set(0, worldR * 0.4, HOME_DIST);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.autoRotate = true;
+  controls.autoRotate = !reduced;
   controls.autoRotateSpeed = 0.45;
   controls.minDistance = 10;
   controls.maxDistance = worldR * 5;
@@ -148,6 +173,7 @@ export function init(app) {
   /* ----- points geometry ----- */
   const n = companies.length;
   const pos = new Float32Array(n * 3);
+  const posTgt = new Float32Array(n * 3);
   const col = new Float32Array(n * 3);
   const size = new Float32Array(n);
   const alpha = new Float32Array(n);
@@ -156,6 +182,7 @@ export function init(app) {
   for (let i = 0; i < n; i++) {
     const c = companies[i];
     pos.set([c.p3.x, c.p3.y, c.p3.z], i * 3);
+    posTgt.set([c.p3.x, c.p3.y, c.p3.z], i * 3);
     const color = new THREE.Color(app.colors[c.ai] || app.colors['Non-AI']);
     col.set([color.r, color.g, color.b], i * 3);
     size[i] = BASE * (c.st === 'Inactive' ? 0.72 : 1);
@@ -173,18 +200,18 @@ export function init(app) {
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
   scene.add(points);
 
   /* ----- acquired rings ----- */
+  const RINGC = new THREE.Color(app.ringColor || '#7fe8c3');
   const acqIdx = [];
   companies.forEach((c, i) => { if (c.st === 'Acquired') acqIdx.push(i); });
   const rn = acqIdx.length;
   const rpos = new Float32Array(rn * 3), rcol = new Float32Array(rn * 3);
   const rsize = new Float32Array(rn), ralpha = new Float32Array(rn);
   for (let j = 0; j < rn; j++) {
-    const c = companies[acqIdx[j]];
-    rpos.set([c.p3.x, c.p3.y, c.p3.z], j * 3);
-    rcol.set([GOLD.r, GOLD.g, GOLD.b], j * 3);
+    rcol.set([RINGC.r, RINGC.g, RINGC.b], j * 3);
     rsize[j] = BASE * 1.5;
     ralpha[j] = 1;
   }
@@ -198,9 +225,22 @@ export function init(app) {
     vertexShader: VERT, fragmentShader: FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
-  scene.add(new THREE.Points(rgeo, rmat));
+  const rings = new THREE.Points(rgeo, rmat);
+  rings.frustumCulled = false;
+  scene.add(rings);
 
-  /* ----- background stars ----- */
+  function syncRingPositions() {
+    for (let j = 0; j < rn; j++) {
+      const i = acqIdx[j];
+      rpos[j * 3] = pos[i * 3];
+      rpos[j * 3 + 1] = pos[i * 3 + 1];
+      rpos[j * 3 + 2] = pos[i * 3 + 2];
+    }
+    rgeo.attributes.position.needsUpdate = true;
+  }
+  syncRingPositions();
+
+  /* ----- background stars + nebulae ----- */
   {
     const sn2 = 900;
     const sp = new Float32Array(sn2 * 3);
@@ -211,9 +251,35 @@ export function init(app) {
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
     scene.add(new THREE.Points(sg, new THREE.PointsMaterial({
-      size: 1.4, sizeAttenuation: false, color: 0x9aa7c7, transparent: true, opacity: 0.4,
+      size: 1.4, sizeAttenuation: false, color: 0xbfae95, transparent: true, opacity: 0.35,
     })));
   }
+
+  const nebulae = [];
+  {
+    const defs = [
+      ['214,112,60', new THREE.Vector3(-0.8, 0.35, -1)],
+      ['52,170,168', new THREE.Vector3(0.9, -0.25, -0.8)],
+      ['90,120,220', new THREE.Vector3(0.1, 0.75, 0.9)],
+    ];
+    for (const [rgb, dir] of defs) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: makeNebulaTexture(rgb),
+        transparent: true, opacity: 0.28,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      sp.userData.dir = dir.clone().normalize();
+      nebulae.push(sp);
+      scene.add(sp);
+    }
+  }
+  function placeNebulae() {
+    for (const sp of nebulae) {
+      sp.position.copy(sp.userData.dir).multiplyScalar(worldR * 3.4);
+      sp.scale.set(worldR * 6.5, worldR * 6.5, 1);
+    }
+  }
+  placeNebulae();
 
   /* ----- selection marker ----- */
   const marker = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -224,14 +290,19 @@ export function init(app) {
   scene.add(marker);
 
   /* ----- cluster labels (HTML overlay) ----- */
-  const labelEls = groups.map(g => {
-    const el = document.createElement('div');
-    el.className = 'g3-label';
-    el.innerHTML = `${esc(g.label)}<small>${g.count}</small>`;
-    el.addEventListener('click', () => app.openCluster(g));
-    labelWrap.appendChild(el);
-    return el;
-  });
+  let labelEls = [];
+  function buildLabels() {
+    for (const el of labelEls) el.remove();
+    labelEls = groups.map(g => {
+      const el = document.createElement('div');
+      el.className = 'g3-label';
+      el.innerHTML = `${esc(g.label)}<small>${g.count}</small>`;
+      el.addEventListener('click', () => app.openCluster(g));
+      labelWrap.appendChild(el);
+      return el;
+    });
+  }
+  buildLabels();
 
   const vA = new THREE.Vector3(), vB = new THREE.Vector3(), rightV = new THREE.Vector3();
   function updateLabels(w, h) {
@@ -275,6 +346,29 @@ export function init(app) {
     }
   }
 
+  /* ----- re-cluster ----- */
+  let moving = false;
+  function relayout() {
+    groups = app.groups();
+    computeLayout();
+    for (let i = 0; i < n; i++) {
+      const c = companies[i];
+      posTgt.set([c.p3.x, c.p3.y, c.p3.z], i * 3);
+    }
+    if (reduced) {
+      pos.set(posTgt);
+      geo.attributes.position.needsUpdate = true;
+      syncRingPositions();
+    } else {
+      moving = true;
+    }
+    controls.maxDistance = worldR * 5;
+    placeNebulae();
+    buildLabels();
+    refresh();
+    flyHome();
+  }
+
   /* ----- camera tweens ----- */
   let anim = null;
   const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -293,6 +387,7 @@ export function init(app) {
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   function pickAt(ev) {
+    if (moving) return null;
     const rect = canvas.getBoundingClientRect();
     const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
     ndc.set(mx / rect.width * 2 - 1, -(my / rect.height) * 2 + 1);
@@ -305,6 +400,7 @@ export function init(app) {
     return null;
   }
 
+  let down = null;
   canvas.addEventListener('pointermove', ev => {
     if (down) return;
     const hit = pickAt(ev);
@@ -312,8 +408,6 @@ export function init(app) {
     app.setHover(hit ? hit.c : null, hit ? hit.mx : 0, hit ? hit.my : 0);
   });
   canvas.addEventListener('mouseleave', () => app.setHover(null));
-
-  let down = null;
   canvas.addEventListener('pointerdown', ev => { down = [ev.clientX, ev.clientY]; });
   canvas.addEventListener('pointerup', ev => {
     const wasDrag = down && Math.hypot(ev.clientX - down[0], ev.clientY - down[1]) > 5;
@@ -354,6 +448,22 @@ export function init(app) {
       marker.scale.set(md * 0.045, md * 0.045, 1);
     }
 
+    if (moving) {
+      let maxd = 0;
+      for (let i = 0; i < n * 3; i++) {
+        const d = posTgt[i] - pos[i];
+        pos[i] += d * 0.09;
+        const ad = Math.abs(d);
+        if (ad > maxd) maxd = ad;
+      }
+      if (maxd < 0.15) {
+        pos.set(posTgt);
+        moving = false;
+      }
+      geo.attributes.position.needsUpdate = true;
+      syncRingPositions();
+    }
+
     let changed = false;
     for (let i = 0; i < n; i++) {
       const d = alphaTgt[i] - alpha[i];
@@ -378,6 +488,7 @@ export function init(app) {
       for (const el of labelEls) el.style.display = 'none';
     },
     refresh,
+    relayout,
     flyToCompany(c) { tweenTo(c.p3, 90); },
     flyToGroup(g) { tweenTo(g.c3, g.r3 * 2.7); },
     flyHome() { tweenTo(new THREE.Vector3(0, 0, 0), HOME_DIST); },

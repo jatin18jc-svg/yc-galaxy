@@ -1,7 +1,7 @@
 'use strict';
 
-const COLORS = { 'AI-native': '#a78bfa', 'AI-enabled': '#2dd4bf', 'Non-AI': '#8a93a6' };
-const GOLD = '#fbbf24';
+const COLORS = { 'AI-native': '#9db8ff', 'AI-enabled': '#ffd98e', 'Non-AI': '#f07b5a' };
+const RING = '#7fe8c3';
 const DOT_R = 2.1;
 const GA = Math.PI * (3 - Math.sqrt(5));
 
@@ -22,6 +22,9 @@ let playTimer = null;
 let appearAt = new Map();
 let mode = '2d';
 let yc3d = null;
+let groupBy = 'sector';
+let morph = null;
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const state = {
   filters: { ai: new Set(), st: new Set(), ly: new Set(), hv: new Set(), cu: new Set() },
@@ -40,10 +43,58 @@ const FILTER_DEFS = [
 
 fetch('data.json').then(r => r.json()).then(init);
 
+/* ---------- geography buckets ---------- */
+
+const BAY = new Set(['san francisco', 'oakland', 'berkeley', 'palo alto', 'menlo park', 'mountain view', 'sunnyvale', 'san jose', 'santa clara', 'redwood city', 'san mateo', 'south san francisco', 'burlingame', 'emeryville', 'fremont', 'cupertino', 'los altos', 'foster city', 'san carlos', 'campbell', 'hayward', 'walnut creek', 'sausalito', 'mill valley', 'san bruno', 'daly city', 'stanford', 'milpitas', 'pleasanton', 'san rafael', 'saratoga', 'los gatos', 'alameda', 'santa cruz']);
+const SOCAL = new Set(['los angeles', 'santa monica', 'culver city', 'venice', 'pasadena', 'irvine', 'san diego', 'long beach', 'newport beach', 'west hollywood', 'glendale', 'burbank', 'el segundo', 'manhattan beach', 'costa mesa', 'carlsbad', 'encinitas', 'la jolla', 'torrance', 'anaheim', 'santa barbara', 'hawthorne']);
+const EUROPE = new Set(['germany', 'france', 'spain', 'switzerland', 'sweden', 'denmark', 'netherlands', 'ireland', 'italy', 'portugal', 'poland', 'austria', 'belgium', 'finland', 'norway', 'estonia', 'czech republic', 'czechia', 'greece', 'romania', 'hungary', 'croatia', 'lithuania', 'latvia', 'luxembourg', 'iceland', 'ukraine', 'bulgaria', 'slovakia', 'slovenia', 'serbia', 'cyprus', 'malta', 'armenia', 'georgia']);
+const LATAM = new Set(['mexico', 'brazil', 'colombia', 'argentina', 'chile', 'peru', 'panama', 'uruguay', 'ecuador', 'costa rica', 'guatemala', 'bolivia', 'venezuela', 'dominican republic', 'el salvador', 'paraguay', 'honduras', 'puerto rico', 'nicaragua']);
+const AFRICA = new Set(['nigeria', 'kenya', 'ghana', 'egypt', 'south africa', 'morocco', 'tunisia', 'uganda', 'rwanda', 'ethiopia', 'senegal', 'ivory coast', "côte d'ivoire", 'tanzania', 'zambia', 'algeria', 'cameroon', 'benin', 'togo', 'zimbabwe', 'mauritius']);
+const MIDEAST = new Set(['israel', 'united arab emirates', 'saudi arabia', 'qatar', 'bahrain', 'kuwait', 'jordan', 'lebanon', 'turkey', 'oman']);
+const APAC = new Set(['singapore', 'indonesia', 'vietnam', 'pakistan', 'japan', 'south korea', 'korea', 'china', 'hong kong', 'taiwan', 'philippines', 'thailand', 'malaysia', 'bangladesh', 'sri lanka', 'nepal', 'australia', 'new zealand', 'kazakhstan', 'myanmar', 'cambodia']);
+const US_METRO = { NY: 'New York', WA: 'Seattle', TX: 'Texas', MA: 'Boston', FL: 'Miami' };
+
+function geoOf(c) {
+  const h = (c.h || '').split(';')[0].trim();
+  if (!h) return 'Remote / unlisted';
+  const parts = h.split(',').map(s => s.trim());
+  const country = parts[parts.length - 1];
+  const lc = country.toLowerCase();
+  if (lc === 'remote') return 'Remote / unlisted';
+  if (country === 'USA') {
+    const state = parts.length >= 3 ? parts[parts.length - 2] : '';
+    const city = (parts[0] || '').toLowerCase();
+    if (state === 'CA') {
+      if (BAY.has(city)) return 'SF Bay Area';
+      if (SOCAL.has(city)) return 'Southern California';
+      return 'California — other';
+    }
+    return US_METRO[state] || 'US — other';
+  }
+  if (country === 'United Kingdom') return 'United Kingdom';
+  if (country === 'India') return 'India';
+  if (country === 'Canada') return 'Canada';
+  if (EUROPE.has(lc)) return 'Europe';
+  if (LATAM.has(lc)) return 'Latin America';
+  if (AFRICA.has(lc)) return 'Africa';
+  if (MIDEAST.has(lc)) return 'Middle East';
+  if (APAC.has(lc)) return 'Asia-Pacific';
+  return 'Rest of world';
+}
+
+/* ---------- grouping ---------- */
+
 function groupKey(c) {
+  if (groupBy === 'geo') return 'G:' + (c.geo || (c.geo = geoOf(c)));
+  if (groupBy === 'model') return 'M:' + (c.mo || 'Unknown');
   if (c.se) return 'S:' + c.se;
   if (c.fn) return 'F:' + c.fn;
   return 'U:Uncategorized';
+}
+
+function subName(c) {
+  if (groupBy === 'sector') return c.su || 'General';
+  return c.se || c.fn || 'General';
 }
 
 function init(data) {
@@ -55,13 +106,15 @@ function init(data) {
   document.getElementById('brand-sub').textContent =
     companies.length.toLocaleString() + ' companies · ' + batches[0] + ' → ' + batches[batches.length - 1];
 
-  buildLayout();
+  buildLayout(false);
   buildSprites();
   buildFilters();
   buildTimeline();
   buildSearch();
 
-  quadtree = d3.quadtree().x(d => d.x).y(d => d.y).addAll(companies);
+  rebuildQuadtree();
+  document.querySelectorAll('#groupby .chip').forEach(b =>
+    b.addEventListener('click', () => setGroupBy(b.dataset.g)));
 
   const zoom = d3.zoom()
     .scaleExtent([0.35, 80])
@@ -95,6 +148,8 @@ const bridge = {
   groups: () => groups,
   batches: () => batches,
   colors: COLORS,
+  ringColor: RING,
+  reducedMotion: REDUCED_MOTION,
   isVisible: c => isVisible(c),
   passesFilters: c => passesFilters(c),
   inTime: c => inTime(c),
@@ -149,7 +204,9 @@ function flyToGroup(g) {
   else flyTo(g.x, g.y, g.r * 1.15);
 }
 
-function buildLayout() {
+const TYPE_LABEL = { S: 'Sector', F: 'Horizontal function', G: 'Region', M: 'Business model', U: '' };
+
+function buildLayout(animate) {
   const byGroup = d3.group(companies, groupKey);
 
   // detect name collisions between sector-groups and function-groups
@@ -161,12 +218,12 @@ function buildLayout() {
 
   groups = [];
   for (const [key, list] of byGroup) {
-    const bySub = d3.group(list, c => c.su || 'General');
+    const bySub = d3.group(list, subName);
     const subs = [];
-    for (const [subName, subList] of bySub) {
+    for (const [sName, subList] of bySub) {
       const n = subList.length;
       const r = 5.6 * Math.sqrt(n) + 4;
-      subs.push({ name: subName, list: subList, r: r + 2.5 });
+      subs.push({ name: sName, list: subList, r: r + 2.5 });
     }
     subs.sort((a, b) => b.list.length - a.list.length);
     d3.packSiblings(subs);
@@ -178,7 +235,7 @@ function buildLayout() {
 
     groups.push({
       key, label,
-      type: key[0] === 'S' ? 'Sector' : (key[0] === 'F' ? 'Horizontal function' : ''),
+      type: TYPE_LABEL[key[0]] || '',
       subs, count: list.length,
       encX: enc.x, encY: enc.y,
       r: enc.r + 7,
@@ -204,13 +261,39 @@ function buildLayout() {
       for (let i = 0; i < list.length; i++) {
         const rr = 5.6 * Math.sqrt(i + 0.4);
         const th = i * GA + seed;
-        list[i].x = sub.cx + rr * Math.cos(th);
-        list[i].y = sub.cy + rr * Math.sin(th);
-        list[i].group = g;
-        list[i].subName = sub.name;
+        const c = list[i];
+        c.tx = sub.cx + rr * Math.cos(th);
+        c.ty = sub.cy + rr * Math.sin(th);
+        c.group = g;
+        c.subName = sub.name;
+        if (!animate) { c.x = c.tx; c.y = c.ty; }
+        else { c.x0 = c.x; c.y0 = c.y; }
       }
     }
   }
+}
+
+function rebuildQuadtree() {
+  quadtree = d3.quadtree().x(d => d.x).y(d => d.y).addAll(companies);
+}
+
+function setGroupBy(g) {
+  if (g === groupBy) return;
+  groupBy = g;
+  document.querySelectorAll('#groupby .chip').forEach(b =>
+    b.classList.toggle('on', b.dataset.g === groupBy));
+  closePanel();
+  setHover(null);
+  buildLayout(true);
+  if (REDUCED_MOTION) {
+    for (const c of companies) { c.x = c.tx; c.y = c.ty; }
+    rebuildQuadtree();
+  } else {
+    morph = { t0: performance.now(), dur: 1200 };
+  }
+  flyHome(900);
+  if (yc3d) yc3d.relayout();
+  dirty = true;
 }
 
 function hash(s) {
@@ -235,7 +318,7 @@ function makeSprite(color, { dim = false, ring = false } = {}) {
     grad.addColorStop(0.3, hexA(color, 0.22));
     grad.addColorStop(1, hexA(color, 0));
   } else {
-    const center = color === COLORS['Non-AI'] ? '#c9d0dd' : '#ffffff';
+    const center = color === COLORS['Non-AI'] ? '#ffe3d1' : '#ffffff';
     grad.addColorStop(0, center);
     grad.addColorStop(0.15, color);
     grad.addColorStop(0.42, hexA(color, 0.42));
@@ -246,7 +329,7 @@ function makeSprite(color, { dim = false, ring = false } = {}) {
   if (ring) {
     g.beginPath();
     g.arc(cx, cx, SPRITE / 6 + 5, 0, Math.PI * 2);
-    g.strokeStyle = GOLD;
+    g.strokeStyle = RING;
     g.lineWidth = 2.5;
     g.stroke();
   }
@@ -296,9 +379,29 @@ function resize() {
   canvas.__dpr = dpr;
 }
 
+let homed = false;
+
 function frame(now) {
-  let animating = false;
-  if (appearAt.size) animating = true;
+  if (!homed && canvas.clientWidth > 320 && canvas.clientHeight > 200) {
+    homed = true;
+    resize();
+    flyHome(0);
+  }
+  let animating = appearAt.size > 0;
+  if (morph) {
+    const t = Math.min(1, (now - morph.t0) / morph.dur);
+    const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    for (const c of companies) {
+      c.x = c.x0 + (c.tx - c.x0) * e;
+      c.y = c.y0 + (c.ty - c.y0) * e;
+    }
+    if (t >= 1) {
+      morph = null;
+      for (const c of companies) { c.x = c.tx; c.y = c.ty; }
+      rebuildQuadtree();
+    }
+    animating = true;
+  }
   if (dirty || animating) {
     draw(now);
     dirty = false;
@@ -319,12 +422,14 @@ function draw(now) {
   ctx.setTransform(dpr * t.k, 0, 0, dpr * t.k, dpr * t.x, dpr * t.y);
 
   // cluster halos
-  ctx.lineWidth = 1 / t.k;
-  for (const g of groups) {
-    ctx.beginPath();
-    ctx.arc(g.x, g.y, g.r, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(90, 110, 170, 0.10)';
-    ctx.stroke();
+  if (!morph) {
+    ctx.lineWidth = 1 / t.k;
+    for (const g of groups) {
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, g.r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(196, 164, 120, 0.09)';
+      ctx.stroke();
+    }
   }
 
   const R = DOT_R * 5;
@@ -362,11 +467,58 @@ function drawBackdrop(w, h) {
     backdrop.width = w; backdrop.height = h;
     const g = backdrop.getContext('2d');
     const rng = d3.randomLcg(42);
+
+    // nebula dust — rust, teal, deep blue washes
+    g.globalCompositeOperation = 'lighter';
+    const clouds = [
+      ['94,47,23', 0.16], ['15,63,68', 0.15], ['22,41,79', 0.13],
+      ['94,47,23', 0.10], ['15,63,68', 0.10],
+    ];
+    for (const [rgb, a] of clouds) {
+      const x = rng() * w, y = rng() * h;
+      const r = (0.28 + rng() * 0.3) * Math.max(w, h);
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, `rgba(${rgb},${a})`);
+      grad.addColorStop(0.55, `rgba(${rgb},${a * 0.35})`);
+      grad.addColorStop(1, `rgba(${rgb},0)`);
+      g.fillStyle = grad;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    g.globalCompositeOperation = 'source-over';
+
+    // distant starfield
     for (let i = 0; i < 340; i++) {
       const x = rng() * w, y = rng() * h, r = rng() * 0.9 + 0.2;
       g.beginPath();
       g.arc(x, y, r, 0, Math.PI * 2);
-      g.fillStyle = `rgba(160,175,215,${0.05 + rng() * 0.13})`;
+      const warm = rng() > 0.7;
+      g.fillStyle = warm
+        ? `rgba(235,205,170,${0.05 + rng() * 0.14})`
+        : `rgba(175,190,225,${0.05 + rng() * 0.13})`;
+      g.fill();
+    }
+
+    // a few bright glint stars with cross flares
+    for (let i = 0; i < 7; i++) {
+      const x = rng() * w, y = rng() * h;
+      const len = 5 + rng() * 9, a = 0.25 + rng() * 0.3;
+      const warm = rng() > 0.5;
+      const col = warm ? `235,210,180` : `190,205,240`;
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const lg = g.createLinearGradient(x - dx * len, y - dy * len, x + dx * len, y + dy * len);
+        lg.addColorStop(0, `rgba(${col},0)`);
+        lg.addColorStop(0.5, `rgba(${col},${a})`);
+        lg.addColorStop(1, `rgba(${col},0)`);
+        g.strokeStyle = lg;
+        g.lineWidth = 0.8;
+        g.beginPath();
+        g.moveTo(x - dx * len, y - dy * len);
+        g.lineTo(x + dx * len, y + dy * len);
+        g.stroke();
+      }
+      g.beginPath();
+      g.arc(x, y, 1.1, 0, Math.PI * 2);
+      g.fillStyle = `rgba(${col},${a + 0.25})`;
       g.fill();
     }
   }
@@ -389,10 +541,10 @@ function drawLabels(dpr, t) {
     ctx.textBaseline = 'top';
     const text = g.label;
     const tw = ctx.measureText(text).width;
-    ctx.fillStyle = `rgba(226, 232, 244, ${0.9 * alpha})`;
+    ctx.fillStyle = `rgba(242, 237, 226, ${0.9 * alpha})`;
     ctx.fillText(text, sx, sy + 5);
     ctx.font = `400 ${Math.max(10, fs * 0.72)}px Inter, sans-serif`;
-    ctx.fillStyle = `rgba(120, 133, 165, ${0.9 * alpha})`;
+    ctx.fillStyle = `rgba(158, 152, 138, ${0.9 * alpha})`;
     ctx.fillText(String(g.count), sx, sy + 5 + fs + 3);
     labelHits.push({ g, x0: sx - tw / 2 - 6, x1: sx + tw / 2 + 6, y0: sy, y1: sy + 5 + fs * 1.9 });
 
@@ -405,7 +557,7 @@ function drawLabels(dpr, t) {
         const sa = Math.min(1, (ssr - 52) / 60) * Math.min(1, alpha + 0.4);
         const sfx = t.applyX(sub.cx), sfy = t.applyY(sub.cy);
         ctx.font = `400 11px Inter, sans-serif`;
-        ctx.fillStyle = `rgba(190, 200, 228, ${0.75 * sa})`;
+        ctx.fillStyle = `rgba(226, 218, 200, ${0.75 * sa})`;
         ctx.fillText(sub.name, sfx, sfy + ssr - 4);
       }
     }
@@ -415,6 +567,7 @@ function drawLabels(dpr, t) {
 /* ---------- interaction ---------- */
 
 function pick(mx, my) {
+  if (morph) return null;
   const [wx, wy] = transform.invert([mx, my]);
   const found = quadtree.find(wx, wy, Math.max(DOT_R * 3, 9 / transform.k));
   if (found && isVisible(found)) return found;
@@ -474,7 +627,7 @@ function flyHome(ms = 750) {
   const railW = 218, panelW = panel.hidden ? 0 : 340;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   const availW = w - railW - panelW;
-  const k = Math.min(availW, h - 90) / (2 * worldR * 1.06);
+  const k = Math.max(0.05, Math.min(availW, h - 90) / (2 * worldR * 1.06));
   const t = d3.zoomIdentity.translate(railW + availW / 2, h / 2 - 10).scale(k);
   const sel = d3.select(canvas);
   if (ms) sel.transition().duration(ms).call(canvas.__zoom_behavior.transform, t);
@@ -614,7 +767,7 @@ function updateCounts() {
   }
   document.getElementById('visible-count').innerHTML =
     `<b>${visible.toLocaleString()}</b> of ${companies.length.toLocaleString()} companies`;
-  document.querySelectorAll('.chip').forEach(chip => {
+  document.querySelectorAll('#filters .chip').forEach(chip => {
     const n = counts[chip.dataset.k][chip.dataset.v] || 0;
     chip.querySelector('.cnt').textContent = n;
   });

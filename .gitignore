@@ -3,3 +3,6 @@
 *.xlsx
 
 .DS_Store
+
+# local design-skill reference files
+SKILL*.md

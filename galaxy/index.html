@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>YC Galaxy — every YC company, 2022 to 2026</title>
 <meta name="description" content="An interactive galaxy of 2,760 Y Combinator companies from 2022 to 2026 — clustered by sector and archetype, colored by AI category, replayable batch by batch.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2230%22 fill=%22%23a78bfa%22/><circle cx=%2278%22 cy=%2230%22 r=%2210%22 fill=%22%232dd4bf%22/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2230%22 fill=%22%239db8ff%22/><circle cx=%2278%22 cy=%2230%22 r=%2210%22 fill=%22%23ffd98e%22/></svg>">
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
 </script>
@@ -33,12 +33,20 @@
 
 <aside id="rail">
   <div id="visible-count"></div>
+  <div class="f-group" id="groupby">
+    <div class="f-title">Group by</div>
+    <div class="f-chips">
+      <button class="chip on" data-g="sector">Sector</button>
+      <button class="chip" data-g="geo">Geography</button>
+      <button class="chip" data-g="model">Business model</button>
+    </div>
+  </div>
   <div id="filters"></div>
   <div id="legend">
-    <div class="f-title">Legend</div>
-    <div class="lg-row"><span class="lg-dot" style="background:#a78bfa"></span>AI-native</div>
-    <div class="lg-row"><span class="lg-dot" style="background:#2dd4bf"></span>AI-enabled</div>
-    <div class="lg-row"><span class="lg-dot" style="background:#8a93a6"></span>Non-AI</div>
+    <div class="f-title">Star colors</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#9db8ff"></span>AI-native</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#ffd98e"></span>AI-enabled</div>
+    <div class="lg-row"><span class="lg-dot" style="background:#f07b5a"></span>Non-AI</div>
     <div class="lg-row"><span class="lg-dot lg-ring"></span>Acquired</div>
     <div class="lg-row"><span class="lg-dot lg-dim"></span>Inactive</div>
   </div>
