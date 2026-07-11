@@ -928,10 +928,8 @@ function setTime(idx, animate) {
 function updateTimelineLabel() {
   const idx = state.tIdx;
   const cum = companies.filter(c => c.b <= idx).length;
-  const inBatch = companies.filter(c => c.b === idx);
-  const aiShare = inBatch.length ? Math.round(100 * inBatch.filter(c => c.ai === 'AI-native').length / inBatch.length) : 0;
   document.getElementById('timeline-label').innerHTML =
-    `<b>${batches[idx]}</b> · ${cum.toLocaleString()} cos · ${aiShare}% AI-native`;
+    `<b>${batches[idx]}</b> · ${cum.toLocaleString()} cos`;
 }
 
 function togglePlay() {
