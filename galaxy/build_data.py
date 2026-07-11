@@ -39,6 +39,14 @@ B2A_CANDIDATES = [
     os.path.expanduser('~/Downloads/YC_market_map_corrected.xlsx'),
 ]
 
+# The agent-stack floor / autonomy mapping for the 71 B2A companies lives on the
+# "agent infra (rebuilt)" tab of the corrected sub-sector workbook.
+FLOOR_CANDIDATES = [
+    os.path.join(HERE, '..', 'yc_ai_sub_corrected.xlsx'),
+    os.path.expanduser('~/Downloads/yc_ai_sub_corrected.xlsx'),
+]
+LAYER_GROUP = {'1. Act': 'Act', '2. Be trusted': 'Be trusted', '3. Human': 'Human'}
+
 SEASON = {'Winter': 0, 'Spring': 1, 'Summer': 2, 'Fall': 3}
 
 def batch_key(b):
@@ -96,7 +104,55 @@ def load_b2a():
     return set()
 
 
+def load_floors():
+    """Return (company, batch) -> {af, alg, pa?, afp?} from the rebuilt tab.
+
+    Floor assignments in dark-red font (C00000) are provisional first-pass
+    reads (afp=1); all payment-autonomy values are provisional too.
+    """
+    for path in FLOOR_CANDIDATES:
+        if not os.path.exists(path):
+            continue
+        w = openpyxl.load_workbook(path)  # need styles, so not read_only
+        if 'agent infra (rebuilt)' not in w.sheetnames:
+            continue
+        s = w['agent infra (rebuilt)']
+        rows = list(s.iter_rows())
+        # header sits on the 3rd row; rows 0-1 are a title/blank
+        hdr = [str(c.value).strip() if c.value is not None else '' for c in rows[2]]
+        ci = {h: i for i, h in enumerate(hdr) if h}
+        need = ('Layer group', 'Floor', 'Company', 'Batch', 'Autonomy (payments)')
+        if not all(k in ci for k in need):
+            continue
+        out = {}
+        for r in rows[3:]:
+            comp = r[ci['Company']]
+            if comp.value is None:
+                continue
+            name = str(comp.value).strip()
+            batch = str(r[ci['Batch']].value).strip()
+            rec = {
+                'af': str(r[ci['Floor']].value).strip(),
+                'alg': LAYER_GROUP.get(str(r[ci['Layer group']].value).strip(),
+                                       str(r[ci['Layer group']].value).strip()),
+            }
+            auto = r[ci['Autonomy (payments)']].value
+            if auto is not None and str(auto).strip():
+                rec['pa'] = str(auto).strip()
+            fc = getattr(comp.font.color, 'rgb', None) if comp.font and comp.font.color else None
+            if fc == '00C00000':
+                rec['afp'] = 1
+            out[(name, batch)] = rec
+        prov = sum(1 for v in out.values() if v.get('afp'))
+        print(f'Floor overlay: {len(out)} companies ({prov} provisional) '
+              f'from {os.path.basename(path)}')
+        return out
+    print('Floor overlay: rebuilt sheet not found — skipping (no floor fields)')
+    return {}
+
+
 b2a = load_b2a()
+floors = load_floors()
 
 companies = []
 for name, batch, r in raw:
@@ -111,6 +167,8 @@ for name, batch, r in raw:
     }
     if (name, batch) in b2a:
         rec['sa'] = 1
+    if (name, batch) in floors:
+        rec.update(floors[(name, batch)])
     companies.append(rec)
 
 with open(OUT, 'w') as f:

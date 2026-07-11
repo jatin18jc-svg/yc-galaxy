@@ -366,12 +366,14 @@ export function init(app) {
   /* ----- visibility / refresh ----- */
   function refresh() {
     const b2a = app.b2aActive && app.b2aActive();
+    const ff = app.floorFilter && app.floorFilter();
     for (let i = 0; i < n; i++) {
       const c = companies[i];
       let a = 0;
       if (app.inTime(c)) {
         a = app.passesFilters(c) ? (c.st === 'Inactive' ? 0.4 : 1) : 0.04;
         if (b2a && !c.sa) a = Math.min(a, 0.15);
+        if (ff && c.af !== ff) a = Math.min(a, 0.15);
       }
       alphaTgt[i] = a;
     }

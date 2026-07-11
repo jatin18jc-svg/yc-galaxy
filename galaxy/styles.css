@@ -142,6 +142,37 @@ html, body {
 .chip-b2a.on { background: rgba(56, 212, 240, 0.14); border-color: #1f6b7a; color: #8fe6f5; }
 .chip-b2a.on .cnt { color: #6fcede; }
 
+/* B2A floor breakdown panel (shown while the overlay is active) */
+#b2a-floors {
+  margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.floor-group { margin-bottom: 10px; }
+.floor-group .f-title { margin-bottom: 5px; }
+.floor-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 4px 7px; margin-bottom: 2px; border-radius: 7px;
+  border: 1px solid transparent; background: transparent; cursor: pointer;
+  font: inherit; font-size: 11.5px; color: var(--text-dim); text-align: left;
+}
+.floor-row:hover { background: #1a2330; color: var(--text); }
+.floor-row.on { background: rgba(56, 212, 240, 0.12); border-color: #1f6b7a; color: #8fe6f5; }
+.floor-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.floor-n { flex: none; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.floor-row.on .floor-n { color: #6fcede; }
+.floor-auto {
+  font-size: 10px; color: var(--text-faint); padding: 0 7px 3px 7px; margin: -1px 0 3px;
+  letter-spacing: 0.01em;
+}
+.prov-mark { color: #f08c7d; margin-left: 2px; }
+.floor-note {
+  font-size: 10px; line-height: 1.45; color: var(--text-faint);
+  border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px;
+}
+.prov-tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-left: 4px;
+  background: rgba(240, 123, 90, 0.1); color: #f08c7d; border: 1px solid #63332c;
+}
+
 /* ---- timeline ---- */
 #timeline {
   position: absolute; bottom: 14px; z-index: 10;

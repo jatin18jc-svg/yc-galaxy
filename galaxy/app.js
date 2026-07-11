@@ -25,8 +25,19 @@ let yc3d = null;
 let groupBy = 'sector';
 let morph = null;
 let b2aOn = false;
+let floorFilter = null;
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const B2A_COLOR = '#38d4f0';
+
+// Agent-stack floors, in the order the report presents them, grouped by layer.
+const B2A_STACK = [
+  ['Act', ['Browser & computer use', 'Compute, sandboxes & runtime', 'Memory & context', 'Integrations & tooling', 'Build / dev frameworks']],
+  ['Be trusted', ['Identity, access & trust', 'Observability, testing & safety', 'Communication (email, phone)', 'Payments & spend', 'Insurance & liability']],
+  ['Human', ['Human escalation & labor']],
+];
+const AUTONOMY_ORDER = ['Human-approves-each', 'Agent-within-mandate', 'Agent-to-agent'];
+const AUTONOMY_SHORT = { 'Human-approves-each': 'Human-approves', 'Agent-within-mandate': 'Agent-within-mandate', 'Agent-to-agent': 'Agent-to-agent' };
+const PAYMENTS_FLOOR = 'Payments & spend';
 
 const state = {
   filters: { ai: new Set(), st: new Set(), ly: new Set(), hv: new Set(), cu: new Set() },
@@ -156,6 +167,7 @@ const bridge = {
   passesFilters: c => passesFilters(c),
   inTime: c => inTime(c),
   b2aActive: () => b2aOn,
+  floorFilter: () => floorFilter,
   getSelected: () => selected,
   showCompany: (c, g) => { showCompany(c, g); },
   openCluster: g => openCluster(g),
@@ -465,6 +477,7 @@ function draw(now) {
     }
     if (!passesFilters(c)) alpha *= 0.06;
     if (b2aOn && !c.sa) alpha *= 0.15;
+    if (floorFilter && c.af !== floorFilter) alpha *= 0.15;
     ctx.globalAlpha = alpha;
     ctx.drawImage(spriteFor(c), c.x - R, c.y - R, R * 2, R * 2);
     if (c.sa) ctx.drawImage(b2aRingSprite, c.x - R, c.y - R, R * 2, R * 2);
@@ -668,9 +681,13 @@ function showCompany(c, fromCluster) {
   selected = c;
   clusterCtx = fromCluster || null;
   const chain = c.se ? `${esc(c.se)}${c.su ? ' · ' + esc(c.su) : ''}` : (c.fn ? esc(c.fn) : '—');
+  const floorVal = c.af
+    ? `${esc(shortFloor(c.af))}${c.pa ? ' · ' + esc(c.pa) : ''}${(c.afp || c.pa) ? ' <span class="prov-tag">provisional</span>' : ''}`
+    : '';
   const rows = [
     ['HQ', c.h], ['Batch', batches[c.b]],
     [c.se ? 'Sector' : 'Function', chain],
+    ['Agent floor', floorVal],
     ['Layer', c.ly], ['Orientation', c.hv], ['Customer', c.cu], ['Model', c.mo],
   ].filter(r => r[1]);
   panelBody.innerHTML = `
@@ -682,7 +699,7 @@ function showCompany(c, fromCluster) {
     </div>
     <div class="p-oneliner">${esc(c.o || '')}</div>
     <div class="p-rows">${rows.map(r =>
-      `<div class="p-row"><div class="p-key">${r[0]}</div><div class="p-val">${r[0] === 'Sector' || r[0] === 'Function' ? r[1] : esc(String(r[1]))}</div></div>`
+      `<div class="p-row"><div class="p-key">${r[0]}</div><div class="p-val">${r[0] === 'Sector' || r[0] === 'Function' || r[0] === 'Agent floor' ? r[1] : esc(String(r[1]))}</div></div>`
     ).join('')}</div>
     <div class="p-links">
       ${c.w ? `<a href="${escAttr(cleanUrl(c.w))}" target="_blank" rel="noopener">Website ↗</a>` : ''}
@@ -784,10 +801,70 @@ function buildFilters() {
 
 function toggleB2A() {
   b2aOn = !b2aOn;
+  floorFilter = null;
   const chip = document.getElementById('b2a-chip');
   if (chip) chip.classList.toggle('on', b2aOn);
+  const panelEl = document.getElementById('b2a-floors');
+  if (b2aOn) { buildB2AFloors(); panelEl.hidden = false; }
+  else { panelEl.hidden = true; }
   dirty = true;
   if (yc3d) yc3d.refresh();
+}
+
+function selectFloor(floor) {
+  floorFilter = (floorFilter === floor) ? null : floor;
+  buildB2AFloors();
+  dirty = true;
+  if (yc3d) yc3d.refresh();
+}
+
+function buildB2AFloors() {
+  const wrap = document.getElementById('b2a-floors');
+  const b2a = companies.filter(c => c.sa);
+  const byFloor = {};
+  for (const c of b2a) (byFloor[c.af] = byFloor[c.af] || []).push(c);
+  let hasProv = false;
+
+  const groupsHtml = B2A_STACK.map(([group, floors]) => {
+    const rows = floors.map(f => {
+      const list = byFloor[f] || [];
+      if (!list.length) return '';
+      const prov = list.filter(c => c.afp).length;
+      if (prov) hasProv = true;
+      const on = floorFilter === f;
+      const dagger = prov ? '<span class="prov-mark">†</span>' : '';
+      let extra = '';
+      if (f === PAYMENTS_FLOOR) {
+        const byAuto = {};
+        for (const c of list) if (c.pa) byAuto[c.pa] = (byAuto[c.pa] || 0) + 1;
+        const parts = AUTONOMY_ORDER.filter(a => byAuto[a]).map(a => `${AUTONOMY_SHORT[a]} ${byAuto[a]}`);
+        if (parts.length) extra = `<div class="floor-auto">${parts.join(' · ')}</div>`;
+      }
+      return `<button class="floor-row${on ? ' on' : ''}" data-floor="${escAttr(f)}">
+        <span class="floor-name">${esc(shortFloor(f))}${dagger}</span>
+        <span class="floor-n">${list.length}</span>
+      </button>${extra}`;
+    }).join('');
+    return `<div class="floor-group"><div class="f-title">${esc(group)}</div>${rows}</div>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="f-title" style="color:#8fe6f5">Agent stack · ${b2a.length}</div>
+    ${groupsHtml}
+    ${hasProv ? `<div class="floor-note">† includes provisional first-pass floor reads (19 companies). Payment-autonomy values are all provisional.</div>` : ''}`;
+  wrap.querySelectorAll('.floor-row').forEach(el =>
+    el.addEventListener('click', () => selectFloor(el.dataset.floor)));
+}
+
+function shortFloor(f) {
+  return f
+    .replace('Browser & computer use', 'Browser & computer')
+    .replace('Compute, sandboxes & runtime', 'Compute & sandboxes')
+    .replace('Observability, testing & safety', 'Observability & testing')
+    .replace('Communication (email, phone)', 'Communication')
+    .replace('Identity, access & trust', 'Identity & access')
+    .replace('Build / dev frameworks', 'Dev frameworks')
+    .replace('Human escalation & labor', 'Human escalation');
 }
 
 function shortName(v) {
