@@ -815,6 +815,7 @@ function updateCounts() {
   document.getElementById('visible-count').innerHTML =
     `<b>${visible.toLocaleString()}</b> of ${companies.length.toLocaleString()} companies`;
   document.querySelectorAll('#filters .chip').forEach(chip => {
+    if (!chip.dataset.k) return;
     const n = counts[chip.dataset.k][chip.dataset.v] || 0;
     chip.querySelector('.cnt').textContent = n;
   });
