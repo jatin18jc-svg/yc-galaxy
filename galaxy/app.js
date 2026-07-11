@@ -24,7 +24,9 @@ let mode = '2d';
 let yc3d = null;
 let groupBy = 'sector';
 let morph = null;
+let b2aOn = false;
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const B2A_COLOR = '#38d4f0';
 
 const state = {
   filters: { ai: new Set(), st: new Set(), ly: new Set(), hv: new Set(), cu: new Set() },
@@ -153,6 +155,7 @@ const bridge = {
   isVisible: c => isVisible(c),
   passesFilters: c => passesFilters(c),
   inTime: c => inTime(c),
+  b2aActive: () => b2aOn,
   getSelected: () => selected,
   showCompany: (c, g) => { showCompany(c, g); },
   openCluster: g => openCluster(g),
@@ -341,12 +344,30 @@ function hexA(hex, a) {
   return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
 }
 
+/* B2A marker: a thin cyan outer ring, drawn over the dot for agent-serving
+   companies. Sits outside the (aurora) acquired ring so a company that is both
+   shows both rings. */
+let b2aRingSprite = null;
+function makeB2ARing() {
+  const c = document.createElement('canvas');
+  c.width = c.height = SPRITE;
+  const g = c.getContext('2d');
+  const cx = SPRITE / 2;
+  g.beginPath();
+  g.arc(cx, cx, SPRITE / 6 + 9, 0, Math.PI * 2);
+  g.strokeStyle = B2A_COLOR;
+  g.lineWidth = 2;
+  g.stroke();
+  return c;
+}
+
 function buildSprites() {
   for (const [ai, color] of Object.entries(COLORS)) {
     sprites[ai + '|Active'] = makeSprite(color);
     sprites[ai + '|Inactive'] = makeSprite(color, { dim: true });
     sprites[ai + '|Acquired'] = makeSprite(color, { ring: true });
   }
+  b2aRingSprite = makeB2ARing();
 }
 
 function spriteFor(c) {
@@ -443,8 +464,10 @@ function draw(now) {
       else alpha = Math.max(0, p);
     }
     if (!passesFilters(c)) alpha *= 0.06;
+    if (b2aOn && !c.sa) alpha *= 0.15;
     ctx.globalAlpha = alpha;
     ctx.drawImage(spriteFor(c), c.x - R, c.y - R, R * 2, R * 2);
+    if (c.sa) ctx.drawImage(b2aRingSprite, c.x - R, c.y - R, R * 2, R * 2);
   }
   ctx.globalAlpha = 1;
 
@@ -741,6 +764,30 @@ function buildFilters() {
       dirty = true;
     });
   });
+
+  // B2A overlay chip — highlights the agent-serving companies in place. It is an
+  // overlay, not a customer filter: it dims everything else and keeps each star
+  // in its current cluster, so it combines with the other filters.
+  const b2aCount = companies.filter(c => c.sa).length;
+  const groupChips = wrap.querySelectorAll('.f-group .f-chips');
+  const custChips = groupChips[groupChips.length - 1];
+  if (custChips && b2aCount) {
+    const chip = document.createElement('button');
+    chip.className = 'chip chip-b2a';
+    chip.id = 'b2a-chip';
+    chip.innerHTML = `B2A <span class="cnt">${b2aCount}</span>`;
+    chip.title = `Serves agents (B2A) — highlight the ${b2aCount} companies building for AI agents`;
+    chip.addEventListener('click', toggleB2A);
+    custChips.appendChild(chip);
+  }
+}
+
+function toggleB2A() {
+  b2aOn = !b2aOn;
+  const chip = document.getElementById('b2a-chip');
+  if (chip) chip.classList.toggle('on', b2aOn);
+  dirty = true;
+  if (yc3d) yc3d.refresh();
 }
 
 function shortName(v) {

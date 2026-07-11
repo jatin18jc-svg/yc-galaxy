@@ -136,6 +136,11 @@ html, body {
 .lg-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .lg-ring { background: transparent; border: 2px solid var(--aurora); width: 7px; height: 7px; }
 .lg-dim { background: #565248; }
+.lg-b2a { background: transparent; border: 2px solid #38d4f0; width: 7px; height: 7px; }
+
+/* B2A overlay chip — cyan tint so it reads as a highlight, not an amber filter */
+.chip-b2a.on { background: rgba(56, 212, 240, 0.14); border-color: #1f6b7a; color: #8fe6f5; }
+.chip-b2a.on .cnt { color: #6fcede; }
 
 /* ---- timeline ---- */
 #timeline {

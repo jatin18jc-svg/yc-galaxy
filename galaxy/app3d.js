@@ -240,6 +240,42 @@ export function init(app) {
   }
   syncRingPositions();
 
+  /* ----- B2A rings (agent-serving companies) ----- */
+  const B2AC = new THREE.Color('#38d4f0');
+  const b2aIdx = [];
+  companies.forEach((c, i) => { if (c.sa) b2aIdx.push(i); });
+  const bn = b2aIdx.length;
+  const bpos = new Float32Array(bn * 3), bcol = new Float32Array(bn * 3);
+  const bsize = new Float32Array(bn), balpha = new Float32Array(bn);
+  for (let j = 0; j < bn; j++) {
+    bcol.set([B2AC.r, B2AC.g, B2AC.b], j * 3);
+    bsize[j] = BASE * 2.1;
+    balpha[j] = 1;
+  }
+  const bgeo = new THREE.BufferGeometry();
+  bgeo.setAttribute('position', new THREE.BufferAttribute(bpos, 3));
+  bgeo.setAttribute('aColor', new THREE.BufferAttribute(bcol, 3));
+  bgeo.setAttribute('aSize', new THREE.BufferAttribute(bsize, 1));
+  bgeo.setAttribute('aAlpha', new THREE.BufferAttribute(balpha, 1));
+  const bmat = new THREE.ShaderMaterial({
+    uniforms: { uTex: { value: makeRingTexture() }, uScale: { value: 800 } },
+    vertexShader: VERT, fragmentShader: FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const b2aRings = new THREE.Points(bgeo, bmat);
+  b2aRings.frustumCulled = false;
+  scene.add(b2aRings);
+  function syncB2APositions() {
+    for (let j = 0; j < bn; j++) {
+      const i = b2aIdx[j];
+      bpos[j * 3] = pos[i * 3];
+      bpos[j * 3 + 1] = pos[i * 3 + 1];
+      bpos[j * 3 + 2] = pos[i * 3 + 2];
+    }
+    bgeo.attributes.position.needsUpdate = true;
+  }
+  syncB2APositions();
+
   /* ----- background stars + nebulae ----- */
   {
     const sn2 = 900;
@@ -329,11 +365,13 @@ export function init(app) {
 
   /* ----- visibility / refresh ----- */
   function refresh() {
+    const b2a = app.b2aActive && app.b2aActive();
     for (let i = 0; i < n; i++) {
       const c = companies[i];
       let a = 0;
       if (app.inTime(c)) {
         a = app.passesFilters(c) ? (c.st === 'Inactive' ? 0.4 : 1) : 0.04;
+        if (b2a && !c.sa) a = Math.min(a, 0.15);
       }
       alphaTgt[i] = a;
     }
@@ -359,6 +397,7 @@ export function init(app) {
       pos.set(posTgt);
       geo.attributes.position.needsUpdate = true;
       syncRingPositions();
+      syncB2APositions();
     } else {
       moving = true;
     }
@@ -462,6 +501,7 @@ export function init(app) {
       }
       geo.attributes.position.needsUpdate = true;
       syncRingPositions();
+      syncB2APositions();
     }
 
     let changed = false;
@@ -474,6 +514,8 @@ export function init(app) {
       geo.attributes.aAlpha.needsUpdate = true;
       for (let j = 0; j < rn; j++) ralpha[j] = alpha[acqIdx[j]];
       rgeo.attributes.aAlpha.needsUpdate = true;
+      for (let j = 0; j < bn; j++) balpha[j] = alpha[b2aIdx[j]];
+      bgeo.attributes.aAlpha.needsUpdate = true;
     }
 
     updateLabels(w, h);
