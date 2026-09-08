@@ -29,9 +29,4 @@ python3 galaxy/build_data.py
 
 This rewrites `galaxy/data.json`, which the app loads at startup.
 
-## Deploy
 
-The site is fully static (`galaxy/` is the web root):
-
-- **Vercel / Netlify / Cloudflare Pages**: import the repo, set the root (output) directory to `galaxy`, no build command.
-- **GitHub Pages**: the included workflow (`.github/workflows/pages.yml`) publishes `galaxy/` on every push to `main`. Enable it in repo Settings → Pages → Source: GitHub Actions. Requires a public repo on the free plan.
