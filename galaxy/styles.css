@@ -42,8 +42,11 @@ html, body {
   background: rgba(7, 10, 20, 0.82); backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
-#stage { position: fixed; inset: 52px 0 0 0; }
-#galaxy, #galaxy3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#stage { position: fixed; inset: var(--topbar-h, 52px) 0 0 0; }
+#galaxy, #galaxy3d {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  cursor: grab; touch-action: none;
+}
 #galaxy.dragging, #galaxy3d.dragging { cursor: grabbing; }
 #galaxy.pointing, #galaxy3d.pointing { cursor: pointer; }
 
@@ -102,7 +105,7 @@ html, body {
 
 /* ---- left rail ---- */
 #rail {
-  position: fixed; top: 52px; left: 0; bottom: 0; width: 218px; z-index: 20;
+  position: fixed; top: var(--topbar-h, 52px); left: 0; bottom: 0; width: 218px; z-index: 20;
   padding: 14px 14px 90px; overflow-y: auto;
   background: rgba(7, 10, 20, 0.72); backdrop-filter: blur(8px);
   border-right: 1px solid var(--line);
@@ -207,7 +210,7 @@ body.panel-open #timeline {
 
 /* ---- right panel ---- */
 #panel {
-  position: fixed; top: 52px; right: 0; bottom: 0; width: 340px; z-index: 20;
+  position: fixed; top: var(--topbar-h, 52px); right: 0; bottom: 0; width: 340px; z-index: 20;
   background: rgba(10, 14, 26, 0.92); backdrop-filter: blur(10px);
   border-left: 1px solid var(--line); overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--line) transparent;
@@ -263,4 +266,138 @@ body.panel-open #timeline {
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
   background: var(--bg); z-index: 100; color: var(--text-dim); font-size: 13px;
   flex-direction: column; gap: 12px;
+}
+
+/* =========================================================
+   Drawer chrome — inert on desktop, used by the mobile block
+   ========================================================= */
+#rail-toggle {
+  display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  width: 34px; height: 34px; flex: none; padding: 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: transparent; cursor: pointer;
+}
+#rail-toggle span {
+  display: block; width: 15px; height: 1.5px; border-radius: 2px;
+  background: var(--text-dim); transition: transform 0.2s, opacity 0.2s;
+}
+body.rail-open #rail-toggle span:nth-child(1) { transform: translateY(5.5px) rotate(45deg); }
+body.rail-open #rail-toggle span:nth-child(2) { opacity: 0; }
+body.rail-open #rail-toggle span:nth-child(3) { transform: translateY(-5.5px) rotate(-45deg); }
+
+#rail-overlay { display: none; }
+
+/* =========================================================
+   MOBILE — everything above this line is the desktop layout
+   and is left exactly as it was.
+   ========================================================= */
+@media (max-width: 767px) {
+
+  /* ---- topbar: an explicit 2-row grid, so it can never wrap to three ----
+     row 1: [menu] [brand, shrinks] [2D/3D] [reset]   row 2: [search, full width] */
+  #topbar {
+    height: auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "menu brand mode reset" "search search search search";
+    align-items: center; column-gap: 8px; row-gap: 8px;
+    padding: 8px 12px;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  }
+  #rail-toggle { display: flex; grid-area: menu; }
+  #brand { grid-area: brand; min-width: 0; overflow: hidden; }
+  #brand-title {
+    font-size: 16px; display: block;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #brand-sub { display: none; }
+  #mode-toggle { grid-area: mode; }
+  #reset-view { grid-area: reset; height: 34px; padding: 0 10px; font-size: 11.5px; }
+  #search-wrap { grid-area: search; max-width: none; margin-left: 0; }
+  #search { height: 34px; font-size: 16px; }   /* 16px stops iOS zooming on focus */
+  #search-results { max-height: 52vh; overflow-y: auto; }
+
+  /* ---- rail becomes an off-canvas drawer ---- */
+  #rail {
+    width: min(272px, 78vw); z-index: 25;
+    padding-bottom: 32px;
+    background: rgba(7, 10, 20, 0.97);
+    box-shadow: 6px 0 28px rgba(0, 0, 0, 0.55);
+    transform: translateX(-101%);
+    transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+    overscroll-behavior: contain;
+  }
+  body.rail-open #rail { transform: none; }
+
+  #rail-overlay {
+    display: block;
+    position: fixed; top: var(--topbar-h, 92px); left: 0; right: 0; bottom: 0; z-index: 24;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0; pointer-events: none; transition: opacity 0.26s;
+  }
+  body.rail-open #rail-overlay { opacity: 1; pointer-events: auto; }
+
+  /* ---- timeline: pinned to the viewport, never off the right edge ---- */
+  #timeline,
+  body.panel-open #timeline {
+    left: 12px; right: 12px; width: auto; transform: none;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    gap: 10px; padding: 9px 12px; border-radius: 12px;
+  }
+  #timeline-label { min-width: 0; font-size: 11px; }
+  #scrubber { min-width: 0; height: 22px; }
+  #play { width: 34px; height: 34px; }
+  /* the bottom sheet sits on top of it — no point drawing it underneath */
+  body.panel-open #timeline { display: none; }
+
+  #hint {
+    left: 50%; right: auto; transform: translateX(-50%);
+    bottom: 74px; max-width: 86vw;
+    white-space: normal; text-align: center; font-size: 11px; line-height: 1.45;
+  }
+
+  /* ---- company / cluster panel becomes a bottom sheet ---- */
+  #panel {
+    top: auto; left: 0; right: 0; bottom: 0; width: auto; z-index: 26;
+    max-height: 62vh;
+    border-left: none; border-top: 1px solid var(--line);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.6);
+    overscroll-behavior: contain;
+  }
+  #panel-body { padding: 16px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  #panel-close { top: 12px; right: 12px; width: 32px; height: 32px; }
+  .p-name { font-size: 19px; }
+  .p-key { width: 78px; }
+  .p-links a { padding: 10px 0; }
+
+  /* ---- touch targets ---- */
+  .chip { padding: 7px 11px; font-size: 12px; }
+  #mode-toggle button { height: 34px; padding: 0 13px; }
+  .cl-item { padding: 10px; }
+
+  #tooltip { display: none; }        /* taps open the sheet instead */
+  .g3-label { font-size: 12px; }
+}
+
+/* Very narrow phones — tighten the topbar so the title isn't truncated away */
+@media (max-width: 380px) {
+  #topbar { column-gap: 6px; padding-left: 10px; padding-right: 10px; }
+  #brand-title { font-size: 15px; }
+  #reset-view { padding: 0 8px; font-size: 11px; }
+  #mode-toggle button { padding: 0 11px; }
+}
+
+/* Landscape phone — plenty of width, very little height, so put the topbar
+   back on one row and keep the sheet from swallowing the map. */
+@media (max-width: 767px) and (max-height: 520px) {
+  #topbar {
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "menu brand search mode reset";
+  }
+  #brand-title { font-size: 15px; }
+  #search-wrap { justify-self: stretch; max-width: 300px; margin-left: auto; }
+  #panel { max-height: 74vh; }
+  #hint { bottom: 66px; }
 }
