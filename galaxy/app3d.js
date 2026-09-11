@@ -411,6 +411,19 @@ export function init(app) {
   }
 
   /* ----- camera tweens ----- */
+
+  // The vertical FOV is fixed, so a portrait phone sees a much narrower slice
+  // horizontally than a desktop window does — back off far enough that the
+  // galaxy still fits across the width.
+  function homeDist() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return HOME_DIST;
+    const aspect = w / h;
+    // the galaxy is a flattened disc, so it needs a little less pull-back
+    // than fitting a full sphere across the width would ask for
+    const pull = aspect < 1 ? Math.min(1.9, 0.85 / aspect) : 1;
+    return Math.min(HOME_DIST * pull, worldR * 4.9);
+  }
   let anim = null;
   const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   function tweenTo(target, dist, dur = 900) {
@@ -462,6 +475,7 @@ export function init(app) {
   /* ----- render loop ----- */
   let rafId = null;
   let lastW = 0, lastH = 0;
+  let homedOnce = false;
 
   function loop(now) {
     rafId = requestAnimationFrame(loop);
@@ -474,6 +488,12 @@ export function init(app) {
       camera.updateProjectionMatrix();
       mat.uniforms.uScale.value = h;
       rmat.uniforms.uScale.value = h;
+      // The canvas is display:none until 3D is first opened, so this is the
+      // earliest point where the real aspect ratio is known.
+      if (!homedOnce) {
+        homedOnce = true;
+        tweenTo(new THREE.Vector3(0, 0, 0), homeDist(), 1);
+      }
     }
     if (anim) {
       const t = Math.min(1, (now - anim.t0) / anim.dur);
@@ -535,6 +555,6 @@ export function init(app) {
     relayout,
     flyToCompany(c) { tweenTo(c.p3, 90); },
     flyToGroup(g) { tweenTo(g.c3, g.r3 * 2.7); },
-    flyHome() { tweenTo(new THREE.Vector3(0, 0, 0), HOME_DIST); },
+    flyHome() { tweenTo(new THREE.Vector3(0, 0, 0), homeDist()); },
   };
 }

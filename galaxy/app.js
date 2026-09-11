@@ -27,6 +27,10 @@ let morph = null;
 let b2aOn = false;
 let floorFilter = null;
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Must stay in step with the @media (max-width: 767px) block in styles.css.
+const MOBILE_MQ = window.matchMedia('(max-width: 767px)');
+const isMobile = () => MOBILE_MQ.matches;
+let touchInput = false;
 const B2A_COLOR = '#38d4f0';
 
 // Agent-stack floors, in the order the report presents them, grouped by layer.
@@ -137,7 +141,9 @@ function init(data) {
   d3.select(canvas).call(zoom).on('dblclick.zoom', null);
   canvas.__zoom_behavior = zoom;
 
-  window.addEventListener('resize', () => { resize(); dirty = true; });
+  window.addEventListener('resize', () => { syncTopbarHeight(); resize(); dirty = true; });
+  window.addEventListener('orientationchange', () => { syncTopbarHeight(); resize(); dirty = true; });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncTopbarHeight);
   canvas.addEventListener('mousemove', onMove);
   canvas.addEventListener('mouseleave', () => { setHover(null); });
   canvas.addEventListener('click', onClick);
@@ -146,6 +152,30 @@ function init(data) {
   document.querySelectorAll('#mode-toggle button').forEach(b =>
     b.addEventListener('click', () => setMode(b.dataset.mode)));
 
+  // ---- mobile filter drawer ----
+  const railToggle = document.getElementById('rail-toggle');
+  const railOverlay = document.getElementById('rail-overlay');
+  if (railToggle) {
+    railToggle.addEventListener('click', () => {
+      const open = document.body.classList.toggle('rail-open');
+      railToggle.setAttribute('aria-expanded', String(open));
+    });
+  }
+  if (railOverlay) railOverlay.addEventListener('click', closeRail);
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeRail(); });
+  canvas.addEventListener('pointerdown', ev => {
+    touchInput = ev.pointerType === 'touch';
+    closeRail();
+  }, { passive: true });
+  MOBILE_MQ.addEventListener('change', () => {
+    closeRail();
+    syncTopbarHeight();
+    resize();
+    flyHome(0);
+    dirty = true;
+  });
+
+  syncTopbarHeight();
   resize();
   flyHome(0);
   updateCounts();
@@ -445,6 +475,9 @@ function frame(now) {
 function draw(now) {
   const dpr = canvas.__dpr || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
+  // In 3D mode this canvas is display:none, so a resize (rotating a phone)
+  // leaves it 0x0 — drawing a 0x0 backdrop throws.
+  if (!w || !h) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
@@ -611,6 +644,7 @@ function pick(mx, my) {
 }
 
 function onMove(ev) {
+  if (touchInput) return;
   const rect = canvas.getBoundingClientRect();
   const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
   const c = pick(mx, my);
@@ -641,30 +675,69 @@ function onClick(ev) {
   const rect = canvas.getBoundingClientRect();
   const mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
   const c = pick(mx, my);
-  if (c) { showCompany(c, clusterCtx); return; }
+  if (c) { showCompany(c, clusterCtx); keepAboveSheet(my); return; }
   const l = labelHits.find(l => mx >= l.x0 && mx <= l.x1 && my >= l.y0 && my <= l.y1);
   if (l) { openCluster(l.g); return; }
   closePanel();
+}
+
+/* ---------- responsive layout ---------- */
+
+// The topbar is one row on desktop and wraps to two on a phone; publish its real
+// height so #stage, #rail and #rail-overlay all hang off the same number.
+function syncTopbarHeight() {
+  const tb = document.getElementById('topbar');
+  if (tb) document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px');
+}
+
+// On desktop the rail and panel eat into the canvas, so the galaxy is centred in
+// what's left. On mobile both are overlays, so the whole canvas is available —
+// except that the bottom sheet covers the lower part of it.
+function viewInsets() {
+  if (isMobile()) {
+    return { railW: 0, panelW: 0, sheet: panel.hidden ? 0 : canvas.clientHeight * 0.62 };
+  }
+  return { railW: 218, panelW: panel.hidden ? 0 : 340, sheet: 0 };
+}
+
+// On a phone the panel is a bottom sheet, so a star tapped low on the screen
+// would end up hidden underneath it — pan just far enough to keep it in view.
+function keepAboveSheet(my) {
+  if (!isMobile()) return;
+  const limit = canvas.clientHeight * 0.38 - 24;
+  if (my <= limit) return;
+  const dy = my - limit;
+  d3.select(canvas).transition().duration(320)
+    .call(canvas.__zoom_behavior.transform, transform.translate(0, -dy / transform.k));
+}
+
+function closeRail() {
+  if (!document.body.classList.contains('rail-open')) return;
+  document.body.classList.remove('rail-open');
+  const btn = document.getElementById('rail-toggle');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
 /* ---------- camera ---------- */
 
 function flyTo(x, y, r, ms = 750) {
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  const railW = 218, panelW = panel.hidden ? 0 : 340;
+  const { railW, panelW, sheet } = viewInsets();
   const availW = w - railW - panelW;
-  const k = Math.min(80, 0.5 * Math.min(availW, h) / r);
-  const t = d3.zoomIdentity.translate(railW + availW / 2 - x * k, h / 2 - y * k).scale(k);
+  const availH = h - sheet;
+  const k = Math.min(80, 0.5 * Math.min(availW, availH) / r);
+  const t = d3.zoomIdentity.translate(railW + availW / 2 - x * k, availH / 2 - y * k).scale(k);
   d3.select(canvas).transition().duration(ms).call(canvas.__zoom_behavior.transform, t);
 }
 
 function flyHome(ms = 750) {
   if (mode === '3d' && yc3d) { yc3d.flyHome(); return; }
-  const railW = 218, panelW = panel.hidden ? 0 : 340;
+  const { railW, panelW, sheet } = viewInsets();
   const w = canvas.clientWidth, h = canvas.clientHeight;
   const availW = w - railW - panelW;
-  const k = Math.max(0.05, Math.min(availW, h - 90) / (2 * worldR * 1.06));
-  const t = d3.zoomIdentity.translate(railW + availW / 2, h / 2 - 10).scale(k);
+  const availH = h - sheet;
+  const k = Math.max(0.05, Math.min(availW, availH - 90) / (2 * worldR * 1.06));
+  const t = d3.zoomIdentity.translate(railW + availW / 2, availH / 2 - 10).scale(k);
   const sel = d3.select(canvas);
   if (ms) sel.transition().duration(ms).call(canvas.__zoom_behavior.transform, t);
   else sel.call(canvas.__zoom_behavior.transform, t);
